@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>短视频万能解析</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0b1020;
+      --card: #151b2f;
+      --text: #e8ecf3;
+      --muted: #a8b0c2;
+      --accent: #5ea1ff;
+      --ok: #27c07d;
+      --err: #ff5d6c;
+      --border: #2a3351;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f5f7fb;
+        --card: #ffffff;
+        --text: #111827;
+        --muted: #5b6477;
+        --accent: #2563eb;
+        --ok: #0f9d58;
+        --err: #e11d48;
+        --border: #dbe3f0;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 32px auto;
+      padding: 0 16px 40px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    p { margin: 0; color: var(--muted); }
+    label { display: block; margin: 10px 0 6px; font-weight: 600; }
+    textarea, select, button, input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 12px;
+      background: transparent;
+      color: var(--text);
+      font-size: 14px;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 210px 130px;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    button {
+      cursor: pointer;
+      background: var(--accent);
+      border-color: transparent;
+      color: #fff;
+      font-weight: 600;
+    }
+    button:disabled { opacity: .65; cursor: not-allowed; }
+    .status { margin-top: 10px; min-height: 24px; font-size: 14px; }
+    .ok { color: var(--ok); }
+    .err { color: var(--err); }
+    pre {
+      margin: 0;
+      background: rgba(127,127,127,.08);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      max-height: 380px;
+      font-size: 12px;
+    }
+    .media-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .media-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(127,127,127,.06);
+    }
+    .media-item video, .media-item img, .media-item audio {
+      width: 100%;
+      border-radius: 8px;
+      background: #000;
+    }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .meta { font-size: 13px; color: var(--muted); margin-top: 8px; }
+    .link {
+      color: var(--accent);
+      text-decoration: none;
+      word-break: break-all;
+      font-size: 12px;
+    }
+    .log-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .btn-light {
+      width: auto;
+      padding: 6px 10px;
+      font-size: 12px;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .log-box {
+      margin: 0;
+      background: rgba(127,127,127,.08);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      max-height: 260px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>短视频万能解析</h1>
+      <p>上传后直接访问域名即可使用。</p>
+      <label for="url">分享链接</label>
+      <textarea id="url" placeholder="粘贴抖音/快手/小红书/微博/B站等分享链接"></textarea>
+      <div class="row" style="grid-template-columns: 210px 130px;">
+        <select id="method">
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+        </select>
+        <button id="parseBtn">立即解析</button>
+      </div>
+      <div id="status" class="status"></div>
+    </div>
+
+    <div class="card">
+      <strong>媒体预览</strong>
+      <div id="media" class="media-grid" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card">
+      <strong>原始返回 JSON</strong>
+      <pre id="json">{}</pre>
+    </div>
+
+    <div class="card">
+      <div class="log-toolbar">
+        <strong>运行日志</strong>
+        <button id="clearLogBtn" class="btn-light" type="button">清空日志</button>
+      </div>
+      <div id="logs" class="log-box">日志初始化完成</div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const API_ENDPOINT = "short_videos/sv2.php";
+    const urlEl = $("url");
+    const methodEl = $("method");
+    const parseBtn = $("parseBtn");
+    const statusEl = $("status");
+    const jsonEl = $("json");
+    const mediaEl = $("media");
+    const logsEl = $("logs");
+    const clearLogBtn = $("clearLogBtn");
+
+    const esc = (s) => String(s || "").replace(/[&<>"']/g, (m) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+    }[m]));
+
+    function setStatus(msg, ok) {
+      statusEl.className = "status " + (ok ? "ok" : "err");
+      statusEl.textContent = msg || "";
+    }
+
+    function nowText() {
+      return new Date().toLocaleTimeString("zh-CN", { hour12: false });
+    }
+
+    function addLog(message, level) {
+      const prefix = level === "error" ? "[ERROR]" : level === "warn" ? "[WARN]" : "[INFO]";
+      logsEl.textContent += "\n[" + nowText() + "] " + prefix + " " + message;
+      logsEl.scrollTop = logsEl.scrollHeight;
+    }
+
+    function resetLog() {
+      logsEl.textContent = "[" + nowText() + "] [INFO] 开始新的解析任务";
+    }
+
+    function renderMediaItem(title, nodeHtml, url) {
+      return (
+        '<div class="media-item">' +
+          '<div class="meta">' + esc(title) + '</div>' +
+          nodeHtml +
+          (url ? '<div style="margin-top:8px;"><a class="link" target="_blank" href="' + esc(url) + '">打开链接</a></div>' : '') +
+        '</div>'
+      );
+    }
+
+    function renderMedia(data) {
+      mediaEl.innerHTML = "";
+      const blocks = [];
+
+      if (!data || typeof data !== "object") {
+        addLog("媒体渲染跳过：data 不是对象", "warn");
+        return;
+      }
+
+      if (data.url) {
+        addLog("识别到视频资源", "info");
+        blocks.push(renderMediaItem(
+          "视频",
+          '<video controls preload="metadata" src="' + esc(data.url) + '"></video>',
+          data.url
+        ));
+      }
+
+      if (Array.isArray(data.images)) {
+        addLog("识别到图片数量: " + data.images.length, "info");
+        data.images.forEach((img, idx) => {
+          blocks.push(renderMediaItem(
+            "图片 " + (idx + 1),
+            '<img loading="lazy" src="' + esc(img) + '" alt="image-' + (idx + 1) + '" />',
+            img
+          ));
+        });
+      }
+
+      if (Array.isArray(data.live_photo)) {
+        addLog("识别到实况数量: " + data.live_photo.length, "info");
+        data.live_photo.forEach((item, idx) => {
+          const video = item && item.video ? item.video : "";
+          const image = item && item.image ? item.image : "";
+          blocks.push(renderMediaItem(
+            "实况 " + (idx + 1),
+            (image ? '<img loading="lazy" src="' + esc(image) + '" alt="live-image" style="margin-bottom:8px;" />' : "") +
+            (video ? '<video controls preload="metadata" src="' + esc(video) + '"></video>' : ""),
+            video || image
+          ));
+        });
+      }
+
+      if (data.music && data.music.url) {
+        addLog("识别到音频资源", "info");
+        blocks.push(renderMediaItem(
+          "音频",
+          '<audio controls preload="none" src="' + esc(data.music.url) + '"></audio>',
+          data.music.url
+        ));
+      }
+
+      if (!blocks.length) {
+        addLog("没有可预览媒体，仅展示 JSON", "warn");
+        mediaEl.innerHTML = '<div class="meta">暂无可预览媒体，查看下方 JSON。</div>';
+        return;
+      }
+
+      addLog("媒体渲染完成，卡片数: " + blocks.length, "info");
+      mediaEl.innerHTML = blocks.join("");
+    }
+
+    async function parse() {
+      const rawUrl = urlEl.value.trim();
+      const endpoint = API_ENDPOINT;
+      const method = methodEl.value;
+
+      if (!rawUrl) {
+        setStatus("请先输入分享链接", false);
+        addLog("输入为空，终止请求", "error");
+        return;
+      }
+
+      parseBtn.disabled = true;
+      setStatus("解析中，请稍候...", true);
+      jsonEl.textContent = "{}";
+      mediaEl.innerHTML = "";
+      resetLog();
+      addLog("请求方法: " + method, "info");
+      addLog("请求入口: " + endpoint, "info");
+      addLog("目标链接: " + rawUrl, "info");
+
+      try {
+        const start = performance.now();
+        let resp;
+        if (method === "POST") {
+          const form = new URLSearchParams();
+          form.set("url", rawUrl);
+          addLog("准备发送 POST 表单数据", "info");
+          resp = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+            body: form.toString()
+          });
+        } else {
+          const sep = endpoint.includes("?") ? "&" : "?";
+          const fullUrl = endpoint + sep + "url=" + encodeURIComponent(rawUrl);
+          addLog("准备发送 GET 请求: " + fullUrl, "info");
+          resp = await fetch(fullUrl, { method: "GET" });
+        }
+
+        const cost = Math.round(performance.now() - start);
+        addLog("收到响应: HTTP " + resp.status + " " + resp.statusText + "，耗时 " + cost + "ms", resp.ok ? "info" : "warn");
+        const text = await resp.text();
+        addLog("响应文本长度: " + text.length, "info");
+        let payload;
+        try {
+          payload = JSON.parse(text);
+          addLog("JSON 解析成功", "info");
+        } catch (e) {
+          addLog("JSON 解析失败，响应前 220 字符: " + text.slice(0, 220), "error");
+          throw new Error("接口返回不是 JSON: " + text.slice(0, 220));
+        }
+
+        jsonEl.textContent = JSON.stringify(payload, null, 2);
+
+        const code = payload.code;
+        const msg = payload.msg || payload.error || "请求完成";
+        const ok = (resp.ok && (code === undefined || code === 200 || code === 0));
+        setStatus((ok ? "成功: " : "失败: ") + msg, ok);
+        addLog("业务状态: code=" + String(code) + "，msg=" + msg, ok ? "info" : "warn");
+
+        const data = payload.data && typeof payload.data === "object" ? payload.data : payload;
+        renderMedia(data);
+      } catch (err) {
+        const errText = err && err.message ? err.message : String(err);
+        setStatus("请求失败: " + errText, false);
+        addLog("请求异常: " + errText, "error");
+      } finally {
+        parseBtn.disabled = false;
+        addLog("任务结束", "info");
+      }
+    }
+
+    parseBtn.addEventListener("click", parse);
+    clearLogBtn.addEventListener("click", () => {
+      logsEl.textContent = "[" + nowText() + "] [INFO] 日志已清空";
+    });
+    urlEl.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") parse();
+    });
+  </script>
+</body>
+</html>
