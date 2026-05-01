@@ -37,7 +37,7 @@ https://你的服务器地址/api/xxx.php?url=视频链接
 ### 请求示例
 
 ```plaintext
-https://wzapi.com/api/douyin.php?url=https://v.douyin.com/xxxx/
+https://api.lvxiaodong.com/api/douyin.php?url=https://v.douyin.com/xxxx/
 ```
 
 ### 响应示例
